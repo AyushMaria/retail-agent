@@ -1,5 +1,6 @@
 from supabase import create_client
 import os
+import json
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -53,3 +54,24 @@ def list_categories() -> list[str]:
             seen.add(cat)
             categories.append(cat)
     return sorted(categories)
+
+def place_order(session_id: str, items: list[dict], total: float,
+                 customer_name: str = None, customer_phone: str = None) -> dict:
+    """Save a confirmed order to Supabase and return the order ID."""
+    try:
+        response = (
+            supabase.table("orders")
+            .insert({
+                "session_id":     session_id,
+                "customer_name":  customer_name,
+                "customer_phone": customer_phone,
+                "items":          json.dumps(items),
+                "total_amount":   total,
+                "status":         "confirmed",
+            })
+            .execute()
+        )
+        order_id = response.data[0]["id"]
+        return {"success": True, "order_id": order_id}
+    except Exception as e:
+        return {"success": False, "error": str(e)}

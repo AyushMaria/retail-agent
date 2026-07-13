@@ -16,7 +16,10 @@ def chat(req: MessageRequest):
     session_id = req.session_id or str(uuid.uuid4())
     history    = sessions.get(session_id, [])
 
-    reply, updated_history = run_agent(req.message, history)
+    # Prepend session_id context so the agent knows which session to act on
+    message_with_context = f"[session_id={session_id}] {req.message}"
+
+    reply, updated_history = run_agent(message_with_context, history)
     sessions[session_id]   = updated_history
 
     return {"session_id": session_id, "reply": reply}

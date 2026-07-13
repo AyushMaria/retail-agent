@@ -3,7 +3,8 @@ import os
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from tools import search_products, get_products_by_category, get_product_by_id, list_categories
+from tools import search_products, get_products_by_category, get_product_by_id, list_categories, place_order
+from cart import add_to_cart, get_cart, get_cart_total, clear_cart, start_checkout, is_awaiting_confirmation
 
 load_dotenv()
 
@@ -14,7 +15,14 @@ SYSTEM_PROMPT = """You are a helpful shopping assistant for a retail store.
 Help customers find products, check prices, and place orders.
 When showing products, always include the name and MRP price formatted as ₹XX.
 Keep responses concise and friendly.
-After showing products, ask if the customer wants to add any to their cart."""
+
+Order flow:
+1. When customer wants an item, use add_item_to_cart with their session_id.
+2. When customer asks for their cart, use view_cart.
+3. When customer says they're done shopping, use checkout to show the order summary and total.
+4. Only call confirm_order after the customer explicitly says yes/confirm — never place an order without their explicit confirmation.
+5. If placing an order, politely ask for their name and phone number before confirming, if not already provided.
+6. After confirm_order succeeds, tell the customer their order ID and thank them."""
 
 # ─── Tool declarations ────────────────────────────────────────────────────────
 TOOLS = types.Tool(function_declarations=[
@@ -56,13 +64,83 @@ TOOLS = types.Tool(function_declarations=[
         description="List all available product categories. Use when customer asks what is available.",
         parameters=types.Schema(type="OBJECT", properties={})
     ),
+    types.FunctionDeclaration(
+        name="add_item_to_cart",
+        description="Add a product to the customer's cart.",
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={
+                "session_id": types.Schema(type="STRING"),
+                "product_id": types.Schema(type="INTEGER"),
+                "item_name":  types.Schema(type="STRING"),
+                "mrp":        types.Schema(type="NUMBER"),
+                "qty":        types.Schema(type="INTEGER")
+            },
+            required=["session_id", "product_id", "item_name", "mrp"]
+        )
+    ),
+    types.FunctionDeclaration(
+        name="view_cart",
+        description="Show the customer their current cart and total.",
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={"session_id": types.Schema(type="STRING")},
+            required=["session_id"]
+        )
+    ),
+    types.FunctionDeclaration(
+        name="checkout",
+        description="Start checkout — shows order summary and asks for confirmation.",
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={"session_id": types.Schema(type="STRING")},
+            required=["session_id"]
+        )
+    ),
+    types.FunctionDeclaration(
+        name="confirm_order",
+        description="Confirm and place the order after customer says yes to checkout summary.",
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={
+                "session_id":     types.Schema(type="STRING"),
+                "customer_name":  types.Schema(type="STRING"),
+                "customer_phone": types.Schema(type="STRING")
+            },
+            required=["session_id"]
+        )
+    ),
 ])
 
+def _add_item_to_cart(session_id, product_id, item_name, mrp, qty=1):
+    add_to_cart(session_id, {"id": product_id, "item_name": item_name, "mrp": mrp}, qty)
+    return {"message": f"Added {item_name} to cart."}
+
+def _view_cart(session_id):
+    return {"items": get_cart(session_id), "total": get_cart_total(session_id)}
+
+def _checkout(session_id):
+    return start_checkout(session_id)
+
+def _confirm_order(session_id, customer_name=None, customer_phone=None):
+    if not is_awaiting_confirmation(session_id):
+        return {"error": "No pending checkout. Call checkout first."}
+    items = get_cart(session_id)
+    total = get_cart_total(session_id)
+    result = place_order(session_id, items, total, customer_name, customer_phone)
+    if result.get("success"):
+        clear_cart(session_id)
+    return result
+
 TOOL_MAP = {
-    "search_products":        search_products,
+    "search_products":          search_products,
     "get_products_by_category": get_products_by_category,
-    "get_product_by_id":      get_product_by_id,
-    "list_categories":        list_categories,
+    "get_product_by_id":        get_product_by_id,
+    "list_categories":          list_categories,
+    "add_item_to_cart":         _add_item_to_cart,
+    "view_cart":                _view_cart,
+    "checkout":                 _checkout,
+    "confirm_order":             _confirm_order,
 }
 
 # ─── Agent loop ───────────────────────────────────────────────────────────────
