@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from tools import search_products, get_products_by_category, get_product_by_id, list_categories, place_order
+from tools import search_products, get_products_by_category, get_product_by_id, list_categories, place_order, check_stock
 from cart import add_to_cart, get_cart, get_cart_total, clear_cart, start_checkout, is_awaiting_confirmation
 
 load_dotenv()
@@ -110,6 +110,17 @@ TOOLS = types.Tool(function_declarations=[
             required=["session_id"]
         )
     ),
+        types.FunctionDeclaration(
+        name="check_stock",
+        description="Check how many units of a product are currently available.",
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={
+                "product_id": types.Schema(type="INTEGER", description="The product ID")
+            },
+            required=["product_id"]
+        )
+    ),
 ])
 
 def _add_item_to_cart(session_id, product_id, item_name, mrp, qty=1):
@@ -141,6 +152,7 @@ TOOL_MAP = {
     "view_cart":                _view_cart,
     "checkout":                 _checkout,
     "confirm_order":             _confirm_order,
+    "check_stock":               check_stock,
 }
 
 # ─── Agent loop ───────────────────────────────────────────────────────────────
