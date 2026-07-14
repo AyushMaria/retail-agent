@@ -57,24 +57,8 @@ def list_categories() -> list[str]:
 
 def place_order(session_id: str, items: list[dict], total: float,
                  customer_name: str = None, customer_phone: str = None) -> dict:
-    """Deduct stock for each item, then save a confirmed order to Supabase."""
+    """Save a confirmed order to Supabase. Stock is managed separately via barcode scanning at the shop."""
     try:
-        # Step 1: Deduct stock for every item BEFORE saving the order
-        for item in items:
-            result = supabase.rpc("deduct_stock", {
-                "p_id":  item["id"],
-                "p_qty": item["qty"]
-            }).execute()
-
-            row = result.data[0]
-            if not row["success"]:
-                return {
-                    "success": False,
-                    "error": f"Not enough stock for {item['item_name']}. "
-                             f"Only {row['remaining']} left."
-                }
-
-        # Step 2: Save the order only if all deductions succeeded
         response = (
             supabase.table("orders")
             .insert({
